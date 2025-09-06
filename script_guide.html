@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkpoint Policy Pusher - Interactive Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chosen Palette: Calm Harmony -->
+    <!-- Application Structure Plan: A tab-based structure (Dashboard, How It Works, Configuration, Setup Guide) was chosen to logically separate different types of information. This structure allows users to quickly find what they need – from a high-level overview for managers, to technical details for engineers, to a step-by-step setup guide for administrators. The user flow is intuitive: start with a general understanding, move to how it works, then configure, and finally, deploy. This structure transforms a static document into an interactive tool. -->
+    <!-- Visualization & Content Choices: Dashboard (Goal: Inform) -> Cards with key information (Overview, Safety, Features). How It Works (Goal: Explain Process) -> Interactive flowchart built with HTML/Tailwind, where clicking a step reveals its description. Configuration (Goal: Organize) -> Structured breakdown of the .conf file sections with a code example and explanations. Setup Guide (Goal: Guide) -> An interactive checklist walking the user through the installation process step-by-step. Justification: Replacing static lists with interactive components increases engagement and makes the information easier to retain. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        .tab-active {
+            border-bottom-color: #3b82f6; /* blue-500 */
+            color: #3b82f6;
+        }
+        .flowchart-step {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .flowchart-step.active {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            border-color: #3b82f6;
+        }
+        .flowchart-arrow {
+            color: #9ca3af; /* gray-400 */
+        }
+        .setup-step input:checked + label .step-circle {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+        .setup-step input:checked + label .step-line {
+            background-color: #3b82f6;
+        }
+         .setup-step input:checked + label .step-text {
+            text-decoration: line-through;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        
+        <header class="text-center mb-8 md:mb-12">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Checkpoint Policy Pusher</h1>
+            <p class="mt-2 text-lg text-slate-600">Interactive Guide for Automation & Deployment</p>
+        </header>
+
+        <div class="bg-white rounded-lg shadow-lg">
+            <nav class="border-b border-slate-200">
+                <ul class="flex flex-wrap -mb-px text-sm font-medium text-center text-slate-500">
+                    <li class="mr-2">
+                        <button data-tab="dashboard" class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-slate-600 hover:border-slate-300 tab-active">
+                            <span class="text-xl">🏠</span> Overview
+                        </button>
+                    </li>
+                    <li class="mr-2">
+                        <button data-tab="how-it-works" class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-slate-600 hover:border-slate-300">
+                            <span class="text-xl">⚙️</span> How It Works
+                        </button>
+                    </li>
+                    <li class="mr-2">
+                        <button data-tab="configuration" class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-slate-600 hover:border-slate-300">
+                           <span class="text-xl">🔧</span> Configuration
+                        </button>
+                    </li>
+                    <li>
+                        <button data-tab="setup-guide" class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-slate-600 hover:border-slate-300">
+                            <span class="text-xl">🚀</span> Setup Guide
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+
+            <main id="tab-content" class="p-4 sm:p-6 md:p-8">
+                
+                <section id="dashboard" class="tab-pane">
+                    <div class="grid md:grid-cols-3 gap-6">
+                        <div class="md:col-span-2 p-6 bg-slate-50 rounded-lg">
+                            <h2 class="text-2xl font-bold mb-4 text-slate-900">Script Purpose</h2>
+                            <p class="text-slate-600 leading-relaxed">
+                                This script provides a safe and reliable way to automate the final step of the Checkpoint policy deployment process: **installing an already configured and saved policy package onto its designated gateways.**
+                                <br><br>
+                                The primary goal is to eliminate the need for manual, after-hours work by scheduling policy installations for specific times (e.g., on a Friday evening or during a weekend maintenance window).
+                            </p>
+                        </div>
+                        <div class="p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                            <h2 class="text-2xl font-bold mb-4 text-blue-900">Key Features</h2>
+                            <ul class="list-disc list-inside text-blue-800 space-y-2">
+                                <li>Flexible Scheduling</li>
+                                <li>Per-Policy Configuration</li>
+                                <li>Enable/Disable Jobs Easily</li>
+                                <li>Secure Credential Management</li>
+                                <li>Email Notifications</li>
+                                <li>Detailed Logging</li>
+                            </ul>
+                        </div>
+                        <div class="md:col-span-3 p-6 bg-amber-50 border border-amber-200 rounded-lg">
+                            <h2 class="text-2xl font-bold mb-4 text-amber-900 flex items-center">
+                                <span class="text-3xl mr-3">🛡️</span> Important Safety Information
+                            </h2>
+                            <p class="text-amber-800 leading-relaxed">
+                                This script **DOES NOT** create, modify, or delete any firewall rules, objects, or security policies. Its sole function is to invoke the "Install Policy" command via the official Checkpoint Management API. It is the programmatic equivalent of a firewall administrator manually clicking the "Install Policy" button in the SmartConsole for changes that have already been made and saved by the security team.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="how-it-works" class="tab-pane hidden">
+                     <div class="text-center mb-8">
+                         <h2 class="text-2xl font-bold mb-2 text-slate-900">Script Workflow</h2>
+                         <p class="text-slate-600">Click on any step to see a detailed description.</p>
+                     </div>
+                    <div class="lg:flex lg:space-x-8">
+                        <div class="lg:w-1/2 flex flex-col items-center justify-center space-y-2">
+                            <div id="step-1" class="flowchart-step w-full text-center p-4 border-2 border-slate-300 rounded-lg bg-white shadow-sm active">1. Load Configuration</div>
+                            <div class="flowchart-arrow text-3xl">↓</div>
+                            <div id="step-2" class="flowchart-step w-full text-center p-4 border-2 border-slate-300 rounded-lg bg-white shadow-sm">2. Check Schedule</div>
+                            <div class="flowchart-arrow text-3xl">↓</div>
+                            <div id="step-3" class="flowchart-step w-full text-center p-4 border-2 border-slate-300 rounded-lg bg-white shadow-sm">3. Execute Task</div>
+                            <div class="flowchart-arrow text-3xl">↓</div>
+                            <div id="step-4" class="flowchart-step w-full text-center p-4 border-2 border-slate-300 rounded-lg bg-white shadow-sm">4. Authenticate</div>
+                            <div class="flowchart-arrow text-3xl">↓</div>
+                            <div id="step-5" class="flowchart-step w-full text-center p-4 border-2 border-slate-300 rounded-lg bg-white shadow-sm">5. Install Policy</div>
+                            <div class="flowchart-arrow text-3xl">↓</div>
+                            <div id="step-6" class="flowchart-step w-full text-center p-4 border-2 border-slate-300 rounded-lg bg-white shadow-sm">6. Send Notification</div>
+                             <div class="flowchart-arrow text-3xl">↓</div>
+                            <div id="step-7" class="flowchart-step w-full text-center p-4 border-2 border-slate-300 rounded-lg bg-white shadow-sm">7. Logout</div>
+                        </div>
+                        <div class="lg:w-1/2 mt-8 lg:mt-0 p-6 bg-slate-50 rounded-lg min-h-[300px]">
+                            <h3 id="step-title" class="text-xl font-bold mb-4 text-slate-900"></h3>
+                            <p id="step-description" class="text-slate-600 leading-relaxed"></p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="configuration" class="tab-pane hidden">
+                    <div class="text-center mb-8">
+                         <h2 class="text-2xl font-bold mb-2 text-slate-900">Configuration File: `app.conf`</h2>
+                         <p class="text-slate-600">The script's behavior is controlled entirely by this file.</p>
+                     </div>
+                     <div class="bg-slate-800 rounded-lg p-4 font-mono text-sm text-white overflow-x-auto">
+                        <pre><code class="language-ini"># General settings for Checkpoint server connection
+[Checkpoint]
+api_url = https://&lt;your-mgmt-server&gt;/web_api
+username = api_user
+credential_manager_target = checkpoint_api
+
+# SMTP server settings for notifications
+[Email]
+smtp_server = smtp.yourcompany.com
+smtp_port = 587
+from_address = checkpoint-automation@yourcompany.com
+to_addresses = admin1@yourcompany.com,team-dl@yourcompany.com
+
+# Email templates
+[EmailTemplates]
+success_subject = SUCCESS: Checkpoint policy '{policy_name}' has been installed
+failure_subject = FAILED: Checkpoint policy '{policy_name}' installation failed
+# ... email body with proper indentation
+
+# Definitions for individual policy installation jobs
+[Policy:Standard_Access_Policy]
+status = true
+schedules = Monday:0800, Friday:1730
+# Optional: define installation targets for this policy
+target_name = BEVRF-CLUSTER
+
+[Policy:Guest_WiFi_Policy]
+status = true
+schedules = Monday:0600, Tuesday:0600
+# No 'target_name' means using targets defined in the policy package
+                        </code></pre>
+                    </div>
+                </section>
+
+                <section id="setup-guide" class="tab-pane hidden">
+                    <div class="text-center mb-8">
+                         <h2 class="text-2xl font-bold mb-2 text-slate-900">Step-by-Step Deployment Guide</h2>
+                         <p class="text-slate-600">Follow the steps below to get the automation up and running.</p>
+                     </div>
+                    <ol>
+                        <li class="relative flex items-start pb-8 setup-step">
+                            <input type="checkbox" id="step1" class="hidden">
+                            <label for="step1" class="flex items-start cursor-pointer group">
+                                <div class="flex flex-col items-center mr-4">
+                                    <div class="step-circle flex items-center justify-center w-8 h-8 bg-white border-2 border-slate-300 rounded-full text-slate-500 font-bold transition-all duration-300">1</div>
+                                    <div class="step-line w-0.5 h-full bg-slate-300 mt-2 transition-all duration-300"></div>
+                                </div>
+                                <div class="pt-1">
+                                    <h3 class="font-bold text-lg step-text transition-all duration-300">Install Dependencies</h3>
+                                    <p class="mt-1 text-slate-600">Make sure you have Python (3.6+) installed, then install the required packages using pip.</p>
+                                    <div class="mt-2 bg-slate-800 text-white p-2 rounded-md text-sm font-mono">pip install requests keyring</div>
+                                </div>
+                            </label>
+                        </li>
+                        <li class="relative flex items-start pb-8 setup-step">
+                            <input type="checkbox" id="step2" class="hidden">
+                             <label for="step2" class="flex items-start cursor-pointer group">
+                                <div class="flex flex-col items-center mr-4">
+                                    <div class="step-circle flex items-center justify-center w-8 h-8 bg-white border-2 border-slate-300 rounded-full text-slate-500 font-bold transition-all duration-300">2</div>
+                                    <div class="step-line w-0.5 h-full bg-slate-300 mt-2 transition-all duration-300"></div>
+                                </div>
+                                <div class="pt-1">
+                                    <h3 class="font-bold text-lg step-text transition-all duration-300">Configure `app.conf`</h3>
+                                    <p class="mt-1 text-slate-600">Fill in the `app.conf` file with your environment's specific details (API URL, usernames, policies, schedules, etc.).</p>
+                                </div>
+                            </label>
+                        </li>
+                         <li class="relative flex items-start pb-8 setup-step">
+                            <input type="checkbox" id="step3" class="hidden">
+                             <label for="step3" class="flex items-start cursor-pointer group">
+                                <div class="flex flex-col items-center mr-4">
+                                    <div class="step-circle flex items-center justify-center w-8 h-8 bg-white border-2 border-slate-300 rounded-full text-slate-500 font-bold transition-all duration-300">3</div>
+                                    <div class="step-line w-0.5 h-full bg-slate-300 mt-2 transition-all duration-300"></div>
+                                </div>
+                                <div class="pt-1">
+                                    <h3 class="font-bold text-lg step-text transition-all duration-300">Store Password</h3>
+                                    <p class="mt-1 text-slate-600">Store the API user's password in the Windows Credential Manager. Ensure the target name matches the `credential_manager_target` in `app.conf`.</p>
+                                    <div class="mt-2 bg-slate-800 text-white p-2 rounded-md text-sm font-mono">cmdkey /add:checkpoint_api /user:api_user /pass</div>
+                                </div>
+                            </label>
+                        </li>
+                         <li class="relative flex items-start setup-step">
+                            <input type="checkbox" id="step4" class="hidden">
+                            <label for="step4" class="flex items-start cursor-pointer group">
+                                <div class="flex flex-col items-center mr-4">
+                                    <div class="step-circle flex items-center justify-center w-8 h-8 bg-white border-2 border-slate-300 rounded-full text-slate-500 font-bold transition-all duration-300">4</div>
+                                </div>
+                                <div class="pt-1">
+                                    <h3 class="font-bold text-lg step-text transition-all duration-300">Create Scheduled Task</h3>
+                                    <p class="mt-1 text-slate-600">Use the Windows Task Scheduler to run the script at regular intervals (e.g., every 5 minutes). Configure the action to point to your Python executable and the path to the script.</p>
+                                </div>
+                            </label>
+                        </li>
+                    </ol>
+                </section>
+            </main>
+        </div>
+        
+        <footer class="text-center mt-8 text-slate-500 text-sm">
+            <p>Interactive Guide generated based on README.md</p>
+        </footer>
+    </div>
+
+    <script>
+        const tabs = document.querySelectorAll('[data-tab]');
+        const tabPanes = document.querySelectorAll('.tab-pane');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetId = tab.dataset.tab;
+
+                tabs.forEach(t => t.classList.remove('tab-active'));
+                tab.classList.add('tab-active');
+
+                tabPanes.forEach(pane => {
+                    if (pane.id === targetId) {
+                        pane.classList.remove('hidden');
+                    } else {
+                        pane.classList.add('hidden');
+                    }
+                });
+            });
+        });
+
+        const flowchartStepsData = {
+            'step-1': {
+                title: '1. Load Configuration',
+                description: 'The script parses the `app.conf` file to load API details, email settings, and the list of all defined policy installation jobs.'
+            },
+            'step-2': {
+                title: '2. Check Schedule',
+                description: 'The script compares the current day and time against the schedule defined for each active policy.'
+            },
+            'step-3': {
+                title: '3. Execute Task',
+                description: 'If a policy\'s scheduled time matches the current time (within a small tolerance window), the script proceeds to execute.'
+            },
+            'step-4': {
+                title: '4. Authenticate',
+                description: 'The script securely retrieves the API user\'s password from the Windows Credential Manager and logs into the Checkpoint Management API to obtain a session ID. Login only occurs if there is a task to perform.'
+            },
+            'step-5': {
+                title: '5. Install Policy',
+                description: 'The script sends the `install-policy` command to the API for the specified policy package. It can either install the policy on explicitly defined targets or let the policy package\'s own settings determine the targets.'
+            },
+            'step-6': {
+                title: '6. Send Notification',
+                description: 'The script sends a detailed email notification indicating the success or failure of the operation.'
+            },
+            'step-7': {
+                title: '7. Logout',
+                description: 'At the end, the script properly logs out of the API session.'
+            }
+        };
+        
+        const flowchartSteps = document.querySelectorAll('.flowchart-step');
+        const stepTitle = document.getElementById('step-title');
+        const stepDescription = document.getElementById('step-description');
+
+        function updateStepDetails(stepId) {
+            const data = flowchartStepsData[stepId];
+            stepTitle.textContent = data.title;
+            stepDescription.textContent = data.description;
+
+            flowchartSteps.forEach(s => {
+                if (s.id === stepId) {
+                    s.classList.add('active');
+                } else {
+                    s.classList.remove('active');
+                }
+            });
+        }
+        
+        flowchartSteps.forEach(step => {
+            step.addEventListener('click', () => {
+                updateStepDetails(step.id);
+            });
+        });
+
+        updateStepDetails('step-1');
+
+    </script>
+</body>
+</html>
