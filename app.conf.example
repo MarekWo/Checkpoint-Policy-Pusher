@@ -1,0 +1,73 @@
+# -----------------------------------------------------------------------------
+# Configuration file for the Checkpoint Policy Pusher script
+# -----------------------------------------------------------------------------
+
+[Checkpoint]
+# URL to the Checkpoint Management Server API
+api_url = https://192.168.1.1/web_api
+
+# Username for API authentication.
+username = api_user
+
+# The target name for the credential stored in Windows Credential Manager.
+credential_manager_target = checkpoint_api
+
+[Email]
+smtp_server = smtp.yourcompany.com
+smtp_port = 587
+from_address = checkpoint-automation@yourcompany.com
+to_addresses = admin1@yourcompany.com,team-dl@yourcompany.com
+
+[EmailTemplates]
+# Placeholders: {policy_name}, {timestamp}, {message}, {error_message}, {target_name}
+success_subject = SUCCESS: Checkpoint policy '{policy_name}' has been installed
+success_body =
+	Hello,
+	
+	This is an automated notification to confirm that the Checkpoint policy '{policy_name}' was successfully pushed.
+	
+	Timestamp: {timestamp}
+	Target(s): {target_name}
+	Details: {message}
+	
+	Regards,
+	Checkpoint Automation Bot
+
+failure_subject = FAILED: Checkpoint policy '{policy_name}' installation failed
+failure_body =
+	Hello,
+	
+	This is an automated notification to report a failure during the installation of the Checkpoint policy '{policy_name}'.
+	
+	Timestamp: {timestamp}
+	Target(s): {target_name}
+	Error Details: {error_message}
+	
+	Please investigate this issue.
+	
+	Regards,
+	Checkpoint Automation Bot
+
+
+# --- Policy Definitions ---
+
+[Policy:Standard_Access_Policy]
+status = true
+schedules = Monday:0800, Friday:1730
+# OPTIONAL: The name of the installation target(s) for THIS policy.
+# If this line is commented out, targets from the policy package will be used.
+# Example for single target: target_name = My-CP-Cluster
+# Example for multiple targets: target_name = Cluster-A,Gateway-B
+target_name = BEVRF-CLUSTER
+
+[Policy:Guest_WiFi_Policy]
+status = true
+schedules = Monday:0600, Tuesday:0600, Wednesday:0600, Thursday:0600, Friday:0600
+# This policy will be installed on targets defined inside its package in SmartConsole,
+# because the 'target_name' parameter below is commented out.
+# target_name = Guest-WiFi-Gateway
+
+[Policy:Weekend_Maintenance_Policy]
+status = false
+schedules = Saturday:0200
+# target_name = DC-Firewall-Cluster
