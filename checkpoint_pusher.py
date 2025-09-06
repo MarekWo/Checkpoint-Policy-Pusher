@@ -9,6 +9,8 @@ checks if any policies are scheduled to be installed at the current time, and
 uses the Checkpoint Management API to perform the installation.
 
 The script is designed to be run as a scheduled task (e.g., every 5 minutes).
+
+version 1.0.0
 """
 
 import configparser
