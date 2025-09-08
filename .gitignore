@@ -1,1 +1,3 @@
 app.conf
+.venv
+.vscode

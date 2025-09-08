@@ -25,8 +25,8 @@ def send_test_email(config, recipient):
         smtp_server = config.get("Email", "smtp_server")
         smtp_port = config.getint("Email", "smtp_port")
         from_address = config.get("Email", "from_address")
-        # Read the SSL verification setting, defaulting to True if not present
-        verify_ssl = config.getboolean("Email", "ssl_verify", fallback=True)
+        # Read the global SSL verification setting
+        verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
 
         # Check for optional SMTP authentication settings
         smtp_user = config.get("Email", "smtp_user", fallback=None)

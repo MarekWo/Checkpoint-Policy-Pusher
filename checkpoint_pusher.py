@@ -47,7 +47,8 @@ def send_notification(config, subject_template, body_template, context):
         smtp_port = config.getint("Email", "smtp_port")
         from_address = config.get("Email", "from_address")
         to_addresses = config.get("Email", "to_addresses").split(',')
-        verify_ssl = config.getboolean("Email", "ssl_verify", fallback=True)
+        # Use the global SSL verification setting
+        verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
 
         subject = subject_template.format(**context)
         body = body_template.format(**context)
@@ -67,6 +68,8 @@ def send_notification(config, subject_template, body_template, context):
             server.sendmail(from_address, to_addresses, message.encode("utf-8"))
         logging.info("Successfully sent notification email.")
 
+    except (configparser.NoOptionError, ValueError) as e:
+        logging.error(f"Configuration error in [Email] section: {e}")
     except Exception as e:
         logging.error(f"Failed to send email notification: {e}")
 
@@ -131,6 +134,9 @@ def process_policies(config):
     logging.info(f"Starting policy check for {current_day} at {current_time}.")
 
     try:
+        # Read the global SSL verification setting first
+        global_verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
+
         cp_user = config.get("Checkpoint", "username")
         cp_credential_target = config.get("Checkpoint", "credential_manager_target")
         cp_password = keyring.get_password(cp_credential_target, cp_user)
@@ -138,9 +144,8 @@ def process_policies(config):
             logging.error(f"Could not find password for user '{cp_user}' in Windows Credential Manager.")
             return
         cp_url = config.get("Checkpoint", "api_url")
-        cp_verify_ssl = config.getboolean("Checkpoint", "ssl_verify", fallback=True)
     except configparser.NoOptionError as e:
-        logging.error(f"Configuration error in [Checkpoint] section: {e}")
+        logging.error(f"Configuration error: {e}")
         return
 
     session_id = None
@@ -166,7 +171,7 @@ def process_policies(config):
                         logging.info(f"Scheduled policy '{policy_name}' found for execution.")
                         
                         if not session_id:
-                            session_id = login_to_checkpoint(cp_url, cp_user, cp_password, cp_verify_ssl)
+                            session_id = login_to_checkpoint(cp_url, cp_user, cp_password, global_verify_ssl)
                             if not session_id:
                                 logging.error("Cannot proceed without a valid session.")
                                 email_context = {
@@ -178,7 +183,7 @@ def process_policies(config):
                                 send_notification(config, config.get("EmailTemplates", "failure_subject"), config.get("EmailTemplates", "failure_body"), email_context)
                                 return
 
-                        success, result = install_policy(cp_url, session_id, policy_name, policy_targets, cp_verify_ssl)
+                        success, result = install_policy(cp_url, session_id, policy_name, policy_targets, global_verify_ssl)
                         
                         email_context = {
                             'policy_name': policy_name,
@@ -200,9 +205,10 @@ def process_policies(config):
 
     if session_id:
         try:
+            # Re-read necessary configs for logout
             cp_url = config.get("Checkpoint", "api_url")
-            cp_verify_ssl = config.getboolean("Checkpoint", "ssl_verify", fallback=True)
-            requests.post(f"{cp_url}/logout", headers={'Content-Type': 'application/json', 'X-chkp-sid': session_id}, json={}, verify=cp_verify_ssl)
+            global_verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
+            requests.post(f"{cp_url}/logout", headers={'Content-Type': 'application/json', 'X-chkp-sid': session_id}, json={}, verify=global_verify_ssl)
             logging.info("Session logged out successfully.")
         except requests.exceptions.RequestException as e:
             logging.error(f"An error occurred during logout: {e}")
@@ -227,4 +233,5 @@ def main():
 if __name__ == "__main__":
     requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
     main()
+
 

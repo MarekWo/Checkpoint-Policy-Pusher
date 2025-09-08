@@ -27,8 +27,10 @@ def test_api_connection(config):
         cp_url = config.get("Checkpoint", "api_url")
         username = config.get("Checkpoint", "username")
         credential_target = config.get("Checkpoint", "credential_manager_target")
-        # Read the SSL verification setting, defaulting to True if not present
-        verify_ssl = config.getboolean("Checkpoint", "ssl_verify", fallback=True)
+        
+        # Read the global SSL verification setting
+        verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
+        
         print(f" - API URL: {cp_url}")
         print(f" - Username: {username}")
         print(f" - Credential Target: {credential_target}")
