@@ -25,6 +25,8 @@ def send_test_email(config, recipient):
         smtp_server = config.get("Email", "smtp_server")
         smtp_port = config.getint("Email", "smtp_port")
         from_address = config.get("Email", "from_address")
+        # Read the SSL verification setting, defaulting to True if not present
+        verify_ssl = config.getboolean("Email", "ssl_verify", fallback=True)
 
         # Check for optional SMTP authentication settings
         smtp_user = config.get("Email", "smtp_user", fallback=None)
@@ -53,7 +55,14 @@ def send_test_email(config, recipient):
 
         # Connect to the server and send the email
         print(f"\nConnecting to SMTP server: {smtp_server}:{smtp_port}...")
+        print(f"SSL Verification: {verify_ssl}")
         context_ssl = ssl.create_default_context()
+        if not verify_ssl:
+            # Disable hostname checking and certificate verification
+            context_ssl.check_hostname = False
+            context_ssl.verify_mode = ssl.CERT_NONE
+            print("WARNING: SSL certificate verification is DISABLED.")
+        
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls(context=context_ssl)
             if smtp_user and smtp_password:
@@ -113,3 +122,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

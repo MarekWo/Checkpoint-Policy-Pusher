@@ -9,8 +9,6 @@ checks if any policies are scheduled to be installed at the current time, and
 uses the Checkpoint Management API to perform the installation.
 
 The script is designed to be run as a scheduled task (e.g., every 5 minutes).
-
-version 1.0.0
 """
 
 import configparser
@@ -20,6 +18,7 @@ import ssl
 from datetime import datetime
 import keyring
 import requests
+from urllib3.exceptions import InsecureRequestWarning
 
 # --- Constants ---
 # Time window in minutes to check for scheduled tasks.
@@ -48,6 +47,7 @@ def send_notification(config, subject_template, body_template, context):
         smtp_port = config.getint("Email", "smtp_port")
         from_address = config.get("Email", "from_address")
         to_addresses = config.get("Email", "to_addresses").split(',')
+        verify_ssl = config.getboolean("Email", "ssl_verify", fallback=True)
 
         subject = subject_template.format(**context)
         body = body_template.format(**context)
@@ -55,9 +55,15 @@ def send_notification(config, subject_template, body_template, context):
         message = f"Subject: {subject}\n\n{body}"
 
         context_ssl = ssl.create_default_context()
+        if not verify_ssl:
+            context_ssl.check_hostname = False
+            context_ssl.verify_mode = ssl.CERT_NONE
+            logging.warning("Email SSL certificate verification is DISABLED.")
+
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls(context=context_ssl)
-            # server.login(smtp_user, smtp_password) # Add if authentication is needed
+            # Add SMTP authentication if needed
+            # server.login(smtp_user, smtp_password)
             server.sendmail(from_address, to_addresses, message.encode("utf-8"))
         logging.info("Successfully sent notification email.")
 
@@ -65,32 +71,24 @@ def send_notification(config, subject_template, body_template, context):
         logging.error(f"Failed to send email notification: {e}")
 
 
-def install_policy(cp_url, session_id, policy_name, targets=None):
-    """
-    Calls the Checkpoint API to install a policy.
-    If targets are provided, they are included in the payload.
-    Otherwise, the API uses the installation targets defined in the policy package.
-    """
+def install_policy(cp_url, session_id, policy_name, targets=None, verify_ssl=True):
+    """Calls the Checkpoint API to install a policy."""
     headers = {
         'Content-Type': 'application/json',
         'X-chkp-sid': session_id
     }
     
-    payload = {
-        "policy-package": policy_name
-    }
+    payload = {"policy-package": policy_name}
 
     if targets:
         target_list = [t.strip() for t in targets.split(',')]
-        # Checkpoint API expects a single string for one target, or a list for multiple
         api_targets = target_list[0] if len(target_list) == 1 else target_list
         payload["targets"] = api_targets
-        logging.info(f"Sending install-policy request for policy '{policy_name}' on explicit target(s): {targets}")
-    else:
-        logging.info(f"Sending install-policy request for policy '{policy_name}'. Targets will be determined by the policy package settings.")
+    
+    if not verify_ssl:
+        logging.warning("API SSL certificate verification is DISABLED.")
 
-    # In a production environment, you should use a valid certificate, not verify=False
-    response = requests.post(f"{cp_url}/install-policy", headers=headers, json=payload, verify=False)
+    response = requests.post(f"{cp_url}/install-policy", headers=headers, json=payload, verify=verify_ssl)
     
     if response.status_code == 200:
         logging.info(f"API call successful for policy '{policy_name}'. Task started.")
@@ -100,15 +98,18 @@ def install_policy(cp_url, session_id, policy_name, targets=None):
         return False, response.json()
 
 
-def login_to_checkpoint(cp_url, username, password):
+def login_to_checkpoint(cp_url, username, password, verify_ssl=True):
     """Logs into the Checkpoint API and returns a session ID."""
     headers = {'Content-Type': 'application/json'}
     payload = {'user': username, 'password': password}
     
     logging.info("Attempting to log into Checkpoint API.")
     
+    if not verify_ssl:
+        logging.warning("API SSL certificate verification is DISABLED.")
+
     try:
-        response = requests.post(f"{cp_url}/login", headers=headers, json=payload, verify=False)
+        response = requests.post(f"{cp_url}/login", headers=headers, json=payload, verify=verify_ssl)
         if response.status_code == 200:
             session_id = response.json().get('sid')
             logging.info("Login successful. Session ID obtained.")
@@ -122,9 +123,7 @@ def login_to_checkpoint(cp_url, username, password):
 
 
 def process_policies(config):
-    """
-    Main logic to process policies from the configuration file.
-    """
+    """Main logic to process policies from the configuration file."""
     now = datetime.now()
     current_day = now.strftime('%A')
     current_time = now.strftime('%H%M')
@@ -136,9 +135,10 @@ def process_policies(config):
         cp_credential_target = config.get("Checkpoint", "credential_manager_target")
         cp_password = keyring.get_password(cp_credential_target, cp_user)
         if not cp_password:
-            logging.error(f"Could not find password for user '{cp_user}' in Credential Manager with target '{cp_credential_target}'.")
+            logging.error(f"Could not find password for user '{cp_user}' in Windows Credential Manager.")
             return
         cp_url = config.get("Checkpoint", "api_url")
+        cp_verify_ssl = config.getboolean("Checkpoint", "ssl_verify", fallback=True)
     except configparser.NoOptionError as e:
         logging.error(f"Configuration error in [Checkpoint] section: {e}")
         return
@@ -151,7 +151,6 @@ def process_policies(config):
                 policy_name = section.split(":", 1)[1]
                 is_active = config.getboolean(section, "status")
                 schedules = config.get(section, "schedules").split(',')
-                # Read target_name for this specific policy; it's optional (fallback=None).
                 policy_targets = config.get(section, "target_name", fallback=None)
 
                 if not is_active:
@@ -160,32 +159,33 @@ def process_policies(config):
 
                 for schedule in schedules:
                     day, time = schedule.strip().split(':')
+                    
                     time_diff = abs(int(current_time) - int(time))
                     
                     if day.strip() == current_day and time_diff <= SCHEDULE_TOLERANCE_MINUTES:
                         logging.info(f"Scheduled policy '{policy_name}' found for execution.")
                         
                         if not session_id:
-                            session_id = login_to_checkpoint(cp_url, cp_user, cp_password)
+                            session_id = login_to_checkpoint(cp_url, cp_user, cp_password, cp_verify_ssl)
                             if not session_id:
                                 logging.error("Cannot proceed without a valid session.")
                                 email_context = {
-                                    'policy_name': "N/A - Login Failed",
+                                    'policy_name': policy_name,
                                     'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
                                     'error_message': "Could not log into Checkpoint API.",
-                                    'target_name': "N/A"
+                                    'target_name': policy_targets or "Defined in Policy"
                                 }
                                 send_notification(config, config.get("EmailTemplates", "failure_subject"), config.get("EmailTemplates", "failure_body"), email_context)
                                 return
 
-                        success, result = install_policy(cp_url, session_id, policy_name, policy_targets)
+                        success, result = install_policy(cp_url, session_id, policy_name, policy_targets, cp_verify_ssl)
                         
                         email_context = {
                             'policy_name': policy_name,
                             'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
                             'message': result,
                             'error_message': result if not success else "N/A",
-                            'target_name': policy_targets or "Defined in Policy Package"
+                            'target_name': policy_targets or "Defined in Policy"
                         }
 
                         if success:
@@ -200,7 +200,9 @@ def process_policies(config):
 
     if session_id:
         try:
-            requests.post(f"{cp_url}/logout", headers={'Content-Type': 'application/json', 'X-chkp-sid': session_id}, json={}, verify=False)
+            cp_url = config.get("Checkpoint", "api_url")
+            cp_verify_ssl = config.getboolean("Checkpoint", "ssl_verify", fallback=True)
+            requests.post(f"{cp_url}/logout", headers={'Content-Type': 'application/json', 'X-chkp-sid': session_id}, json={}, verify=cp_verify_ssl)
             logging.info("Session logged out successfully.")
         except requests.exceptions.RequestException as e:
             logging.error(f"An error occurred during logout: {e}")
@@ -212,8 +214,10 @@ def main():
     logging.info("--- Script execution started ---")
     try:
         config = configparser.ConfigParser()
-        # Use utf-8 encoding to handle special characters if any
         config.read(CONFIG_FILE, encoding='utf-8')
+        if not config.sections():
+            logging.error(f"Configuration file '{CONFIG_FILE}' is empty or could not be read.")
+            return
         process_policies(config)
     except Exception as e:
         logging.critical(f"An unhandled exception occurred: {e}", exc_info=True)
@@ -221,7 +225,6 @@ def main():
 
 
 if __name__ == "__main__":
-    from urllib3.exceptions import InsecureRequestWarning
     requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
     main()
 

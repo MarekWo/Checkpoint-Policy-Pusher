@@ -27,9 +27,12 @@ def test_api_connection(config):
         cp_url = config.get("Checkpoint", "api_url")
         username = config.get("Checkpoint", "username")
         credential_target = config.get("Checkpoint", "credential_manager_target")
+        # Read the SSL verification setting, defaulting to True if not present
+        verify_ssl = config.getboolean("Checkpoint", "ssl_verify", fallback=True)
         print(f" - API URL: {cp_url}")
         print(f" - Username: {username}")
         print(f" - Credential Target: {credential_target}")
+        print(f" - SSL Verification: {verify_ssl}")
 
         # 2. Retrieve the password from Windows Credential Manager
         print("\nAttempting to retrieve password from Windows Credential Manager...")
@@ -44,12 +47,14 @@ def test_api_connection(config):
 
         # 3. Attempt to log in to the Checkpoint API
         print(f"\nAttempting to log in to {cp_url}...")
+        if not verify_ssl:
+            print("WARNING: SSL certificate verification is DISABLED.")
         headers = {'Content-Type': 'application/json'}
         payload = {'user': username, 'password': password}
         
         # Disable SSL verification for lab environments. 
         # In production, use verify='/path/to/ca.pem'
-        response = requests.post(f"{cp_url}/login", headers=headers, json=payload, verify=False)
+        response = requests.post(f"{cp_url}/login", headers=headers, json=payload, verify=verify_ssl)
 
         # 4. Analyze the login response
         if response.status_code == 200:
@@ -80,7 +85,8 @@ def test_api_connection(config):
         if session_id:
             try:
                 print("\nAttempting to log out...")
-                logout_response = requests.post(f"{cp_url}/logout", headers={'Content-Type': 'application/json', 'X-chkp-sid': session_id}, json={}, verify=False)
+                verify_ssl = config.getboolean("Checkpoint", "ssl_verify", fallback=True)
+                logout_response = requests.post(f"{cp_url}/logout", headers={'Content-Type': 'application/json', 'X-chkp-sid': session_id}, json={}, verify=verify_ssl)
                 if logout_response.status_code == 200:
                     print("--- Logout SUCCESSFUL! ---")
                     print("\nAPI connection test completed successfully.")
@@ -111,3 +117,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

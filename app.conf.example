@@ -12,6 +12,10 @@ username = api_user
 # The target name for the credential stored in Windows Credential Manager.
 credential_manager_target = checkpoint_api
 
+# Set to 'false' if you use self-signed certificates for the API.
+# This will disable SSL certificate verification for API calls.
+ssl_verify = false
+
 [Email]
 smtp_server = smtp.yourcompany.com
 smtp_port = 587
