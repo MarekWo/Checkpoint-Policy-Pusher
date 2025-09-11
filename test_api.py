@@ -11,12 +11,11 @@ This is a quick way to diagnose issues with API URLs, credentials, or network
 connectivity without running the main policy pusher script.
 """
 
+import argparse
 import configparser
 import keyring
 import requests
 from urllib3.exceptions import InsecureRequestWarning
-
-CONFIG_FILE = "app.conf"
 
 def test_api_connection(config):
     """Performs the login/logout test against the Checkpoint API."""
@@ -54,8 +53,6 @@ def test_api_connection(config):
         headers = {'Content-Type': 'application/json'}
         payload = {'user': username, 'password': password}
         
-        # Disable SSL verification for lab environments. 
-        # In production, use verify='/path/to/ca.pem'
         response = requests.post(f"{cp_url}/login", headers=headers, json=payload, verify=verify_ssl)
 
         # 4. Analyze the login response
@@ -100,17 +97,25 @@ def test_api_connection(config):
 
 def main():
     """Main entry point for the API test script."""
+    parser = argparse.ArgumentParser(description="Checkpoint API Connection Tester.")
+    parser.add_argument(
+        "--config",
+        default="app.conf",
+        help="Path to the configuration file (default: app.conf)"
+    )
+    args = parser.parse_args()
+    config_file = args.config
+    
     print("--- Checkpoint API Connection Tester ---")
+    print(f"Using configuration file: '{config_file}'\n")
 
     try:
         config = configparser.ConfigParser()
-        if not config.read(CONFIG_FILE):
-            print(f"ERROR: Could not find or read the configuration file: '{CONFIG_FILE}'.")
+        if not config.read(config_file, encoding='utf-8'):
+            print(f"ERROR: Could not find or read the configuration file: '{config_file}'.")
             return
         
-        # Suppress only the single warning from urllib3 about insecure requests
         requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
-        
         test_api_connection(config)
 
     except Exception as e:

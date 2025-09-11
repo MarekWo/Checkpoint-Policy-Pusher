@@ -10,13 +10,11 @@ It can be run with an optional command-line argument to specify a recipient,
 otherwise, it will use the first email address from the 'to_addresses' list.
 """
 
+import argparse
 import configparser
 import smtplib
 import ssl
-import sys
 import keyring
-
-CONFIG_FILE = "app.conf"
 
 def send_test_email(config, recipient):
     """Connects to the SMTP server and sends a test email."""
@@ -25,10 +23,8 @@ def send_test_email(config, recipient):
         smtp_server = config.get("Email", "smtp_server")
         smtp_port = config.getint("Email", "smtp_port")
         from_address = config.get("Email", "from_address")
-        # Read the global SSL verification setting
         verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
 
-        # Check for optional SMTP authentication settings
         smtp_user = config.get("Email", "smtp_user", fallback=None)
         smtp_password_key = config.get("Email", "smtp_password_key", fallback=None)
         smtp_password = None
@@ -38,11 +34,9 @@ def send_test_email(config, recipient):
             smtp_password = keyring.get_password(smtp_password_key, smtp_user)
             if not smtp_password:
                 print(f"\nERROR: Could not find password for SMTP user '{smtp_user}' using target name '{smtp_password_key}'.")
-                print("Please ensure the credential is stored correctly in Windows Credential Manager.")
                 return
             print("SMTP password retrieved successfully.")
 
-        # Construct the test email message
         subject = "Test Email from Checkpoint Script Configuration"
         body = (
             "Hello,\n\n"
@@ -53,12 +47,10 @@ def send_test_email(config, recipient):
         )
         message = f"Subject: {subject}\n\n{body}"
 
-        # Connect to the server and send the email
         print(f"\nConnecting to SMTP server: {smtp_server}:{smtp_port}...")
         print(f"SSL Verification: {verify_ssl}")
         context_ssl = ssl.create_default_context()
         if not verify_ssl:
-            # Disable hostname checking and certificate verification
             context_ssl.check_hostname = False
             context_ssl.verify_mode = ssl.CERT_NONE
             print("WARNING: SSL certificate verification is DISABLED.")
@@ -76,7 +68,7 @@ def send_test_email(config, recipient):
         print("\n--- Test email sent successfully! ---")
 
     except configparser.NoSectionError:
-        print(f"\nERROR: The [Email] section was not found in '{CONFIG_FILE}'.")
+        print(f"\nERROR: The [Email] section was not found in the config file.")
     except configparser.NoOptionError as e:
         print(f"\nERROR: A required configuration option is missing in the [Email] section: {e}")
     except smtplib.SMTPAuthenticationError as e:
@@ -88,37 +80,50 @@ def send_test_email(config, recipient):
         print(f"\n--- An unexpected error occurred: ---")
         print(e)
 
-
 def main():
     """Main entry point for the test script."""
+    parser = argparse.ArgumentParser(description="Checkpoint Email Configuration Tester.")
+    parser.add_argument(
+        "recipient",
+        nargs="?",
+        default=None,
+        help="Optional email address to send the test message to."
+    )
+    parser.add_argument(
+        "--config",
+        default="app.conf",
+        help="Path to the configuration file (default: app.conf)"
+    )
+    args = parser.parse_args()
+    config_file = args.config
+    
     print("--- Checkpoint Email Configuration Tester ---")
+    print(f"Using configuration file: '{config_file}'\n")
 
     try:
         config = configparser.ConfigParser()
-        if not config.read(CONFIG_FILE):
-            print(f"ERROR: Could not find or read the configuration file: '{CONFIG_FILE}'.")
+        if not config.read(config_file, encoding='utf-8'):
+            print(f"ERROR: Could not find or read the configuration file: '{config_file}'.")
             return
 
-        print(f"Successfully read configuration from '{CONFIG_FILE}'.")
+        print(f"Successfully read configuration from '{config_file}'.")
 
-        # Determine the recipient for the test email
-        if len(sys.argv) > 1:
-            recipient = sys.argv[1]
-            print(f"Using recipient from command line argument: {recipient}")
-        else:
+        recipient = args.recipient
+        if not recipient:
             try:
-                # Fallback to the first address in the config file
                 recipient = config.get("Email", "to_addresses").split(',')[0].strip()
                 print(f"No recipient provided. Using first address from config file: {recipient}")
             except (configparser.NoOptionError, IndexError):
                 print("\nERROR: 'to_addresses' is not defined in the [Email] section or is empty.")
                 return
+        else:
+             print(f"Using recipient from command line argument: {recipient}")
+
 
         send_test_email(config, recipient)
 
     except Exception as e:
         print(f"A critical error occurred: {e}")
-
 
 if __name__ == "__main__":
     main()
