@@ -17,6 +17,9 @@ username = api_user
 # The target name for the credential stored in Windows Credential Manager.
 credential_manager_target = checkpoint_api
 
+# Define how long the script should check if installing policy finished successfully
+task_timeout_minutes = 2
+
 [Email]
 smtp_server = smtp.yourcompany.com
 smtp_port = 587

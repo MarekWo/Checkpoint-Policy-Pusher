@@ -6,24 +6,22 @@ Checkpoint Policy Pusher
 This script automates the process of installing Checkpoint policies based on a schedule
 defined in an external configuration file (app.conf). It reads the configuration,
 checks if any policies are scheduled to be installed at the current time, and
-uses the Checkpoint Management API to perform the installation.
-
-The script is designed to be run as a scheduled task (e.g., every 5 minutes).
+uses the Checkpoint Management API to perform the installation and monitor its status.
 """
 
 import configparser
 import logging
 import smtplib
 import ssl
+import time  # ### CHANGE ###: Imported the 'time' module
 from datetime import datetime
 import keyring
 import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 # --- Constants ---
-# Time window in minutes to check for scheduled tasks.
-# E.g., if set to 2, a task at 08:00 will run if the script executes between 07:58 and 08:02.
 SCHEDULE_TOLERANCE_MINUTES = 2
+POLLING_INTERVAL_SECONDS = 10  # ### CHANGE ###: Polling interval for checking task status
 LOG_FILE = "checkpoint_pusher.log"
 CONFIG_FILE = "app.conf"
 
@@ -47,7 +45,6 @@ def send_notification(config, subject_template, body_template, context):
         smtp_port = config.getint("Email", "smtp_port")
         from_address = config.get("Email", "from_address")
         to_addresses = config.get("Email", "to_addresses").split(',')
-        # Use the global SSL verification setting
         verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
 
         subject = subject_template.format(**context)
@@ -63,8 +60,6 @@ def send_notification(config, subject_template, body_template, context):
 
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls(context=context_ssl)
-            # Add SMTP authentication if needed
-            # server.login(smtp_user, smtp_password)
             server.sendmail(from_address, to_addresses, message.encode("utf-8"))
         logging.info("Successfully sent notification email.")
 
@@ -74,15 +69,49 @@ def send_notification(config, subject_template, body_template, context):
         logging.error(f"Failed to send email notification: {e}")
 
 
-def install_policy(cp_url, session_id, policy_name, targets=None, verify_ssl=True):
-    """Calls the Checkpoint API to install a policy."""
+### CHANGE ###: New function to monitor tasks
+def monitor_task(cp_url, session_id, task_id, timeout_seconds, verify_ssl=True):
+    """Polls the 'show-task' API endpoint until the task is complete or times out."""
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout_seconds:
+        headers = {
+            'Content-Type': 'application/json',
+            'X-chkp-sid': session_id
+        }
+        payload = {'task-id': task_id, 'details-level': 'full'}
+        
+        try:
+            response = requests.post(f"{cp_url}/show-task", headers=headers, json=payload, verify=verify_ssl)
+            response.raise_for_status()
+            
+            task_info = response.json().get('tasks', [{}])[0]
+            status = task_info.get('status')
+            
+            logging.info(f"Task '{task_id}' status: {status}")
+
+            if status not in ['in progress', 'queued']:
+                return status, task_info # Returns the final status (e.g., 'succeeded', 'failed')
+            
+            time.sleep(POLLING_INTERVAL_SECONDS)
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error while polling task status for task '{task_id}': {e}")
+            return "api_error", {"message": str(e)}
+
+    logging.warning(f"Task '{task_id}' timed out after {timeout_seconds} seconds.")
+    return "timed_out", {"message": f"Task did not complete within the {timeout_seconds / 60:.0f}-minute timeout."}
+
+
+### CHANGE ###: Modified the install_policy function
+def install_policy(cp_url, session_id, policy_name, targets, timeout_seconds, verify_ssl=True):
+    """Calls the Checkpoint API to install a policy and monitors the task."""
     headers = {
         'Content-Type': 'application/json',
         'X-chkp-sid': session_id
     }
     
     payload = {"policy-package": policy_name}
-
     if targets:
         target_list = [t.strip() for t in targets.split(',')]
         api_targets = target_list[0] if len(target_list) == 1 else target_list
@@ -91,14 +120,24 @@ def install_policy(cp_url, session_id, policy_name, targets=None, verify_ssl=Tru
     if not verify_ssl:
         logging.warning("API SSL certificate verification is DISABLED.")
 
-    response = requests.post(f"{cp_url}/install-policy", headers=headers, json=payload, verify=verify_ssl)
-    
-    if response.status_code == 200:
-        logging.info(f"API call successful for policy '{policy_name}'. Task started.")
-        return True, response.json()
-    else:
-        logging.error(f"API call failed for policy '{policy_name}'. Status: {response.status_code}, Response: {response.text}")
-        return False, response.json()
+    try:
+        response = requests.post(f"{cp_url}/install-policy", headers=headers, json=payload, verify=verify_ssl)
+        
+        if response.status_code != 200:
+            logging.error(f"Failed to initiate policy install for '{policy_name}'. Status: {response.status_code}, Response: {response.text}")
+            return "failed_to_start", response.json()
+        
+        task_id = response.json().get('task-id')
+        if not task_id:
+            logging.error(f"API call for '{policy_name}' succeeded but did not return a task-id.")
+            return "no_task_id", response.json()
+
+        logging.info(f"Policy install for '{policy_name}' initiated. Task ID: {task_id}. Monitoring status...")
+        return monitor_task(cp_url, session_id, task_id, timeout_seconds, verify_ssl)
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"An error occurred while calling install-policy API: {e}")
+        return "api_error", {"message": str(e)}
 
 
 def login_to_checkpoint(cp_url, username, password, verify_ssl=True):
@@ -134,9 +173,7 @@ def process_policies(config):
     logging.info(f"Starting policy check for {current_day} at {current_time}.")
 
     try:
-        # Read the global SSL verification setting first
         global_verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
-
         cp_user = config.get("Checkpoint", "username")
         cp_credential_target = config.get("Checkpoint", "credential_manager_target")
         cp_password = keyring.get_password(cp_credential_target, cp_user)
@@ -144,7 +181,10 @@ def process_policies(config):
             logging.error(f"Could not find password for user '{cp_user}' in Windows Credential Manager.")
             return
         cp_url = config.get("Checkpoint", "api_url")
-    except configparser.NoOptionError as e:
+        # ### CHANGE ###: Read the timeout from the configuration
+        task_timeout_minutes = config.getint("Checkpoint", "task_timeout_minutes", fallback=2)
+        task_timeout_seconds = task_timeout_minutes * 60
+    except (configparser.NoOptionError, ValueError) as e:
         logging.error(f"Configuration error: {e}")
         return
 
@@ -163,9 +203,9 @@ def process_policies(config):
                     continue
 
                 for schedule in schedules:
-                    day, time = schedule.strip().split(':')
+                    day, time_str = schedule.strip().split(':')
                     
-                    time_diff = abs(int(current_time) - int(time))
+                    time_diff = abs(int(current_time) - int(time_str))
                     
                     if day.strip() == current_day and time_diff <= SCHEDULE_TOLERANCE_MINUTES:
                         logging.info(f"Scheduled policy '{policy_name}' found for execution.")
@@ -178,24 +218,28 @@ def process_policies(config):
                                     'policy_name': policy_name,
                                     'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
                                     'error_message': "Could not log into Checkpoint API.",
-                                    'target_name': policy_targets or "Defined in Policy"
+                                    'target_name': policy_targets or "Defined in Policy",
+                                    'message': "N/A"
                                 }
                                 send_notification(config, config.get("EmailTemplates", "failure_subject"), config.get("EmailTemplates", "failure_body"), email_context)
                                 return
 
-                        success, result = install_policy(cp_url, session_id, policy_name, policy_targets, global_verify_ssl)
+                        # ### CHANGE ###: Modified the call logic and result handling
+                        final_status, result_details = install_policy(cp_url, session_id, policy_name, policy_targets, task_timeout_seconds, global_verify_ssl)
                         
                         email_context = {
                             'policy_name': policy_name,
                             'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
-                            'message': result,
-                            'error_message': result if not success else "N/A",
+                            'message': f"Final status: {final_status}. Details: {result_details}",
+                            'error_message': result_details if final_status != 'succeeded' else "N/A",
                             'target_name': policy_targets or "Defined in Policy"
                         }
 
-                        if success:
+                        if final_status == 'succeeded':
+                            logging.info(f"Policy '{policy_name}' installed successfully.")
                             send_notification(config, config.get("EmailTemplates", "success_subject"), config.get("EmailTemplates", "success_body"), email_context)
                         else:
+                            logging.error(f"Policy '{policy_name}' installation failed with status: {final_status}.")
                             send_notification(config, config.get("EmailTemplates", "failure_subject"), config.get("EmailTemplates", "failure_body"), email_context)
                         break
             
@@ -205,7 +249,6 @@ def process_policies(config):
 
     if session_id:
         try:
-            # Re-read necessary configs for logout
             cp_url = config.get("Checkpoint", "api_url")
             global_verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
             requests.post(f"{cp_url}/logout", headers={'Content-Type': 'application/json', 'X-chkp-sid': session_id}, json={}, verify=global_verify_ssl)
@@ -233,5 +276,3 @@ def main():
 if __name__ == "__main__":
     requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
     main()
-
-
