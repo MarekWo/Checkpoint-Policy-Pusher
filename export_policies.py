@@ -72,23 +72,34 @@ def get_policy_list(config):
         # 5. Generate and print the configuration for each policy
         print("# --- Copy the policy definitions below and paste into your app.conf ---")
         for pkg in packages:
-            policy_name = pkg.get('name')
-            targets = pkg.get('installation-targets', [])
-            
-            # Format targets into a comma-separated string
-            target_names = [t.get('name') for t in targets if t.get('name')]
-            target_string = ", ".join(target_names)
-            
-            print(f"\n[Policy:{policy_name}]")
-            print("status = false")
-            print("schedules = Monday:0100")
-            if target_string:
-                print(f"# Targets automatically discovered: {target_string}")
-                print(f"target_name = {target_string}")
-            else:
-                print("# No specific installation targets found for this policy.")
-                print("# The policy will be installed on targets defined within the package itself.")
-                print("# target_name =")
+            try:
+                policy_name = pkg.get('name')
+                targets = pkg.get('installation-targets', [])
+                
+                target_names = []
+                # ### CHANGE ###: Handle both strings and dictionaries in the targets list
+                for t in targets:
+                    if isinstance(t, dict):
+                        target_names.append(t.get('name'))
+                    elif isinstance(t, str):
+                        target_names.append(t)
+                
+                target_string = ", ".join(filter(None, target_names))
+                
+                print(f"\n[Policy:{policy_name}]")
+                print("status = false")
+                print("schedules = Monday:0100")
+                if target_string:
+                    print(f"# Targets automatically discovered: {target_string}")
+                    print(f"target_name = {target_string}")
+                else:
+                    print("# No specific installation targets found for this policy.")
+                    print("# The policy will be installed on targets defined within the package itself.")
+                    print("# target_name =")
+            except Exception as e:
+                policy_name = pkg.get('name', 'Unknown')
+                print(f"\n--- ERROR processing policy '{policy_name}': {e} ---")
+
 
     except Exception as e:
         print(f"\n--- An unexpected error occurred: ---")
@@ -103,7 +114,6 @@ def get_policy_list(config):
 
 def main():
     """Main entry point for the script."""
-    # ### CHANGE ###: Argument parsing is now handled here.
     parser = argparse.ArgumentParser(description="Checkpoint Policy Exporter script.")
     parser.add_argument(
         "--config",
@@ -117,7 +127,6 @@ def main():
 
     try:
         config = configparser.ConfigParser()
-        # Use the config_file variable from argparse
         if not config.read(config_file, encoding='utf-8'):
             print(f"ERROR: Configuration file '{config_file}' is empty or could not be read.")
             return
