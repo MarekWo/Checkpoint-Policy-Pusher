@@ -87,7 +87,7 @@ def test_api_connection(config):
         if session_id:
             try:
                 print("\nAttempting to log out...")
-                verify_ssl = config.getboolean("Checkpoint", "ssl_verify", fallback=True)
+                verify_ssl = config.getboolean("General", "ssl_verify", fallback=True)
                 logout_response = requests.post(f"{cp_url}/logout", headers={'Content-Type': 'application/json', 'X-chkp-sid': session_id}, json={}, verify=verify_ssl)
                 if logout_response.status_code == 200:
                     print("--- Logout SUCCESSFUL! ---")
@@ -119,4 +119,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
