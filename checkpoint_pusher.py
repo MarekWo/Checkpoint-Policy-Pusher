@@ -13,7 +13,7 @@ import configparser
 import logging
 import smtplib
 import ssl
-import time  # ### CHANGE ###: Imported the 'time' module
+import time
 from datetime import datetime
 import keyring
 import requests
@@ -21,7 +21,7 @@ from urllib3.exceptions import InsecureRequestWarning
 
 # --- Constants ---
 SCHEDULE_TOLERANCE_MINUTES = 2
-POLLING_INTERVAL_SECONDS = 10  # ### CHANGE ###: Polling interval for checking task status
+POLLING_INTERVAL_SECONDS = 10
 LOG_FILE = "checkpoint_pusher.log"
 CONFIG_FILE = "app.conf"
 
@@ -69,7 +69,39 @@ def send_notification(config, subject_template, body_template, context):
         logging.error(f"Failed to send email notification: {e}")
 
 
-### CHANGE ###: New function to monitor tasks
+### CHANGE ###: New function to format the verbose task details into a readable summary.
+def format_task_details(task_info):
+    """Formats the detailed task JSON into a human-readable string."""
+    if not isinstance(task_info, dict):
+        return str(task_info) # Return as-is if not a dictionary
+
+    summary_lines = []
+
+    # Main summary comment
+    summary_comment = task_info.get('comments')
+    if summary_comment:
+        summary_lines.append(f"Summary: {summary_comment}")
+
+    # Start and end times
+    start_time = task_info.get('start-time', {}).get('iso-8601', 'N/A')
+    end_time = task_info.get('last-update-time', {}).get('iso-8601', 'N/A')
+    summary_lines.append(f"Started: {start_time}, Finished: {end_time}")
+
+    # Per-target status details
+    task_details = task_info.get('task-details')
+    if isinstance(task_details, list) and task_details:
+        summary_lines.append("\nPer-Target Status:")
+        processed_gateways = set()
+        for detail in task_details:
+            gateway_name = detail.get('gatewayName')
+            status_desc = detail.get('statusDescription')
+            if gateway_name and gateway_name not in processed_gateways:
+                summary_lines.append(f"- {gateway_name}: {status_desc}")
+                processed_gateways.add(gateway_name)
+
+    return "\n".join(summary_lines)
+
+
 def monitor_task(cp_url, session_id, task_id, timeout_seconds, verify_ssl=True):
     """Polls the 'show-task' API endpoint until the task is complete or times out."""
     start_time = time.time()
@@ -91,7 +123,7 @@ def monitor_task(cp_url, session_id, task_id, timeout_seconds, verify_ssl=True):
             logging.info(f"Task '{task_id}' status: {status}")
 
             if status not in ['in progress', 'queued']:
-                return status, task_info # Returns the final status (e.g., 'succeeded', 'failed')
+                return status, task_info
             
             time.sleep(POLLING_INTERVAL_SECONDS)
 
@@ -103,7 +135,6 @@ def monitor_task(cp_url, session_id, task_id, timeout_seconds, verify_ssl=True):
     return "timed_out", {"message": f"Task did not complete within the {timeout_seconds / 60:.0f}-minute timeout."}
 
 
-### CHANGE ###: Modified the install_policy function
 def install_policy(cp_url, session_id, policy_name, targets, timeout_seconds, verify_ssl=True):
     """Calls the Checkpoint API to install a policy and monitors the task."""
     headers = {
@@ -181,7 +212,6 @@ def process_policies(config):
             logging.error(f"Could not find password for user '{cp_user}' in Windows Credential Manager.")
             return
         cp_url = config.get("Checkpoint", "api_url")
-        # ### CHANGE ###: Read the timeout from the configuration
         task_timeout_minutes = config.getint("Checkpoint", "task_timeout_minutes", fallback=2)
         task_timeout_seconds = task_timeout_minutes * 60
     except (configparser.NoOptionError, ValueError) as e:
@@ -224,14 +254,16 @@ def process_policies(config):
                                 send_notification(config, config.get("EmailTemplates", "failure_subject"), config.get("EmailTemplates", "failure_body"), email_context)
                                 return
 
-                        # ### CHANGE ###: Modified the call logic and result handling
                         final_status, result_details = install_policy(cp_url, session_id, policy_name, policy_targets, task_timeout_seconds, global_verify_ssl)
                         
+                        # ### CHANGE ###: Use the new formatting function for email content.
+                        formatted_details = format_task_details(result_details)
+
                         email_context = {
                             'policy_name': policy_name,
                             'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
-                            'message': f"Final status: {final_status}. Details: {result_details}",
-                            'error_message': result_details if final_status != 'succeeded' else "N/A",
+                            'message': f"Final status: {final_status}\n\n{formatted_details}",
+                            'error_message': formatted_details if final_status != 'succeeded' else "N/A",
                             'target_name': policy_targets or "Defined in Policy"
                         }
 
