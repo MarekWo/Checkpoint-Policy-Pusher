@@ -4,11 +4,12 @@
 Checkpoint Policy Pusher
 
 This script automates the process of installing Checkpoint policies based on a schedule
-defined in an external configuration file (app.conf). It reads the configuration,
+defined in an external configuration file. It reads the configuration,
 checks if any policies are scheduled to be installed at the current time, and
 uses the Checkpoint Management API to perform the installation and monitor its status.
 """
 
+import argparse # ### CHANGE ###: Imported the argparse module for command-line arguments
 import configparser
 import logging
 import smtplib
@@ -23,7 +24,7 @@ from urllib3.exceptions import InsecureRequestWarning
 SCHEDULE_TOLERANCE_MINUTES = 2
 POLLING_INTERVAL_SECONDS = 10
 LOG_FILE = "checkpoint_pusher.log"
-CONFIG_FILE = "app.conf"
+# ### CHANGE ###: The CONFIG_FILE constant is removed, as it's now handled by argparse.
 
 # --- Main Functions ---
 
@@ -69,25 +70,21 @@ def send_notification(config, subject_template, body_template, context):
         logging.error(f"Failed to send email notification: {e}")
 
 
-### CHANGE ###: New function to format the verbose task details into a readable summary.
 def format_task_details(task_info):
     """Formats the detailed task JSON into a human-readable string."""
     if not isinstance(task_info, dict):
-        return str(task_info) # Return as-is if not a dictionary
+        return str(task_info)
 
     summary_lines = []
 
-    # Main summary comment
     summary_comment = task_info.get('comments')
     if summary_comment:
         summary_lines.append(f"Summary: {summary_comment}")
 
-    # Start and end times
     start_time = task_info.get('start-time', {}).get('iso-8601', 'N/A')
     end_time = task_info.get('last-update-time', {}).get('iso-8601', 'N/A')
     summary_lines.append(f"Started: {start_time}, Finished: {end_time}")
 
-    # Per-target status details
     task_details = task_info.get('task-details')
     if isinstance(task_details, list) and task_details:
         summary_lines.append("\nPer-Target Status:")
@@ -256,7 +253,6 @@ def process_policies(config):
 
                         final_status, result_details = install_policy(cp_url, session_id, policy_name, policy_targets, task_timeout_seconds, global_verify_ssl)
                         
-                        # ### CHANGE ###: Use the new formatting function for email content.
                         formatted_details = format_task_details(result_details)
 
                         email_context = {
@@ -291,17 +287,30 @@ def process_policies(config):
 
 def main():
     """Main entry point of the script."""
+    # ### CHANGE ###: Argument parsing is now handled here.
+    parser = argparse.ArgumentParser(description="Checkpoint Policy Pusher script.")
+    parser.add_argument(
+        "--config",
+        default="app.conf",
+        help="Path to the configuration file (default: app.conf)"
+    )
+    args = parser.parse_args()
+    
+    config_file = args.config
+
     setup_logging()
-    logging.info("--- Script execution started ---")
+    logging.info(f"--- Script execution started (Config: {config_file}) ---")
+    
     try:
         config = configparser.ConfigParser()
-        config.read(CONFIG_FILE, encoding='utf-8')
-        if not config.sections():
-            logging.error(f"Configuration file '{CONFIG_FILE}' is empty or could not be read.")
+        # Use the config_file variable from argparse
+        if not config.read(config_file, encoding='utf-8'):
+            logging.error(f"Configuration file '{config_file}' is empty or could not be read.")
             return
         process_policies(config)
     except Exception as e:
         logging.critical(f"An unhandled exception occurred: {e}", exc_info=True)
+    
     logging.info("--- Script execution finished ---")
 
 
