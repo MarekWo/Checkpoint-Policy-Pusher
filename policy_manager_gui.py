@@ -8,7 +8,7 @@ installation jobs by modifying the 'status' flag in a .conf file.
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk, simpledialog
 import configparser
 import argparse
 import os
@@ -22,6 +22,7 @@ class PolicyManagerApp:
 
         self.config = configparser.ConfigParser()
         self.config_file_path = None
+        self.favorites = {}
         self.policy_vars = {}  # To store {section_name: (var, checkbox_widget)}
 
         # --- UI Elements ---
@@ -38,6 +39,25 @@ class PolicyManagerApp:
 
         self.file_label = ttk.Label(top_frame, text="No file loaded.", anchor="w", foreground="gray")
         self.file_label.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+
+        # --- Favorites Frame ---
+        favorites_frame = ttk.LabelFrame(self.root, text="Favorites Management", padding="10")
+        favorites_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+
+        fav_label = ttk.Label(favorites_frame, text="Favorite:")
+        fav_label.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.favorites_combo = ttk.Combobox(favorites_frame, state="readonly")
+        self.favorites_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        self.load_favorite_button = ttk.Button(favorites_frame, text="Load", command=self.load_selected_favorite, state=tk.DISABLED)
+        self.load_favorite_button.pack(side=tk.LEFT, padx=5)
+
+        self.save_favorite_button = ttk.Button(favorites_frame, text="Save...", command=self.save_current_as_favorite, state=tk.DISABLED)
+        self.save_favorite_button.pack(side=tk.LEFT)
+
+        self.delete_favorite_button = ttk.Button(favorites_frame, text="Delete", command=self.delete_selected_favorite, state=tk.DISABLED)
+        self.delete_favorite_button.pack(side=tk.LEFT, padx=(5, 0))
 
         # Main frame for the policy list
         main_frame = ttk.Frame(self.root, padding="10")
@@ -87,10 +107,15 @@ class PolicyManagerApp:
             self.config.read(self.config_file_path, encoding='utf-8')
 
             self.populate_policy_list()
+            self.load_favorites_from_config()
+
             self.file_label.config(text=os.path.basename(self.config_file_path))
             self.save_button.config(state=tk.NORMAL)
+            self.load_favorite_button.config(state=tk.NORMAL)
+            self.save_favorite_button.config(state=tk.NORMAL)
+            self.delete_favorite_button.config(state=tk.NORMAL)
             self.status_bar.config(text=f"Loaded {len(self.policy_vars)} policies from {os.path.basename(self.config_file_path)}")
-        except Exception as e:
+        except (configparser.Error, Exception) as e:
             messagebox.showerror("Error", f"Failed to read or parse the file:\n{e}")
             self.config_file_path = None
             self.file_label.config(text="No file loaded.")
@@ -100,11 +125,57 @@ class PolicyManagerApp:
             messagebox.showerror("Error", str(e))
             self.status_bar.config(text=f"Error: {e}")
 
+    def load_favorites_from_config(self):
+        """Parses [Favorite:*] sections from the config and populates the UI."""
+        self.favorites.clear()
+        fav_sections = [s for s in self.config.sections() if s.startswith("Favorite:")]
+
+        for section in fav_sections:
+            name = section.split(":", 1)[1]
+            policies_str = self.config.get(section, "policies", fallback="").strip()
+            # Handle empty 'policies' value correctly
+            policy_list = [p.strip() for p in policies_str.split(',') if p.strip()]
+            self.favorites[name] = policy_list
+
+        self.update_favorites_dropdown()
+
+    def update_favorites_dropdown(self):
+        """Updates the favorites combobox with the current list of favorites."""
+        fav_names = sorted(list(self.favorites.keys()))
+        self.favorites_combo['values'] = fav_names
+        if fav_names:
+            self.favorites_combo.set(fav_names[0])
+        else:
+            self.favorites_combo.set('')
+
+    def load_selected_favorite(self):
+        """Applies the selected favorite by checking/unchecking policies."""
+        selected_fav = self.favorites_combo.get()
+        if not selected_fav or selected_fav not in self.favorites:
+            return
+
+        policies_to_enable = self.favorites[selected_fav]
+
+        for section, (var, _) in self.policy_vars.items():
+            policy_name = section.split(":", 1)[1]
+            if policy_name in policies_to_enable:
+                var.set(True)
+            else:
+                var.set(False)
+
+        self.status_bar.config(text=f"Loaded favorite '{selected_fav}'. Click 'Save Changes' to apply.")
+
     def populate_policy_list(self):
         """Clears and repopulates the list of policies in the GUI."""
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
         self.policy_vars.clear()
+
+        # Also reset favorites UI
+        self.favorites.clear()
+        self.favorites_combo.set('')
+        self.favorites_combo['values'] = []
+
 
         policy_sections = [s for s in self.config.sections() if s.startswith("Policy:")]
 
@@ -148,6 +219,47 @@ class PolicyManagerApp:
         except Exception as e:
             self.status_bar.config(text="Error saving file.")
             messagebox.showerror("Error", f"Failed to save the file:\n{e}")
+
+    def save_current_as_favorite(self):
+        """Saves the current set of enabled policies as a new favorite."""
+        fav_name = simpledialog.askstring("Save Favorite", "Enter a name for this favorite set:")
+        if not fav_name or not fav_name.strip():
+            return
+
+        fav_name = fav_name.strip()
+        section_name = f"Favorite:{fav_name}"
+
+        if self.config.has_section(section_name):
+            if not messagebox.askyesno("Overwrite Favorite", f"A favorite named '{fav_name}' already exists. Overwrite it?"):
+                return
+
+        enabled_policies = []
+        for section, (var, _) in self.policy_vars.items():
+            if var.get():
+                policy_name = section.split(":", 1)[1]
+                enabled_policies.append(policy_name)
+
+        if not self.config.has_section(section_name):
+            self.config.add_section(section_name)
+
+        self.config.set(section_name, "policies", ", ".join(enabled_policies))
+
+        self.load_favorites_from_config()
+        self.favorites_combo.set(fav_name)
+        self.status_bar.config(text=f"Favorite '{fav_name}' saved. Click 'Save Changes' to commit to file.")
+
+    def delete_selected_favorite(self):
+        """Deletes the selected favorite from the config."""
+        selected_fav = self.favorites_combo.get()
+        if not selected_fav:
+            return
+
+        if messagebox.askyesno("Delete Favorite", f"Are you sure you want to delete the favorite '{selected_fav}'?"):
+            section_name = f"Favorite:{selected_fav}"
+            if self.config.has_section(section_name):
+                self.config.remove_section(section_name)
+                self.load_favorites_from_config()
+                self.status_bar.config(text=f"Favorite '{selected_fav}' deleted. Click 'Save Changes' to commit to file.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Checkpoint Policy Manager GUI.")
