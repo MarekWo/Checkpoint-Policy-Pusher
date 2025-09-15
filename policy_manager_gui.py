@@ -109,6 +109,13 @@ class PolicyManagerApp:
             self.populate_policy_list()
             self.load_favorites_from_config()
 
+            # Automatically load the last used favorite
+            last_used_favorite = self.config.get("General", "last_used_favorite", fallback=None)
+            if last_used_favorite and last_used_favorite in self.favorites:
+                self.favorites_combo.set(last_used_favorite)
+                # Use 'after' to ensure the UI is ready before applying the favorite
+                self.root.after(50, self.load_selected_favorite)
+
             self.file_label.config(text=os.path.basename(self.config_file_path))
             self.save_button.config(state=tk.NORMAL)
             self.load_favorite_button.config(state=tk.NORMAL)
@@ -210,6 +217,16 @@ class PolicyManagerApp:
             for section, (var, _) in self.policy_vars.items():
                 status_str = "true" if var.get() else "false"
                 self.config.set(section, "status", status_str)
+
+            # Save the last used favorite to the [General] section
+            if not self.config.has_section("General"):
+                self.config.add_section("General")
+
+            current_favorite = self.favorites_combo.get()
+            if current_favorite:
+                self.config.set("General", "last_used_favorite", current_favorite)
+            elif self.config.has_option("General", "last_used_favorite"):
+                self.config.remove_option("General", "last_used_favorite")
 
             with open(self.config_file_path, 'w', encoding='utf-8') as configfile:
                 self.config.write(configfile)
